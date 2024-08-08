@@ -26,13 +26,29 @@ redisClient.on(`reconnecting`, redisReconnectingHandler)
 redisClient.on(`error`, redisErrorHandler)
 redisClient.subscribe(redisChannel, redisMessageHandler)
 
+const heartbeat = () => {
+    this.isAlive = true
+}
+const interval = setInterval(() => {
+    wsServer.clients.forEach(function each(ws) {
+        if (ws.isAlive === false) {
+            return ws.terminate()
+        }
+        ws.isAlive = false
+        ws.ping()
+    });
+}, 30000)
+
 const wsServer = new WebSocketServer({port: websocketPort})
 wsServer.on('connection', function connection(ws, req) {
+    ws.isAlive = true
+
     const url = new URL(`${baseUrl}${req.url}`)
     const channelName = url.searchParams['channel'] || ''
     console.log('New connection', req.url, url.searchParams)
     addSocketConnection(channelName, ws)
 
+    ws.on('pong', heartbeat)
     ws.on('message', function message(data, isBinary) {
         console.log('received: %s', data)
         wsServer.clients.forEach(function each(client) {
@@ -48,16 +64,15 @@ wsServer.on('connection', function connection(ws, req) {
     })
     ws.on('error', console.error)
 })
+wsServer.on('close', function close() {
+    clearInterval(interval)
+})
 
 // HTTP server with express, websocket server stat page
 const httpServer = express()
 httpServer.listen(expressPort);
 httpServer.route([`/`, `/stat`]).get((request, response) => {
-    return response.send(
-        JSON.stringify(
-            wsServerStat(socketListeners)
-        )
-    )
+    return response.send(wsServerStat())
 })
 
 setInterval(updateServerData, updateTimeout)

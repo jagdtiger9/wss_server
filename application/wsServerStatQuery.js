@@ -1,4 +1,4 @@
-import moment from "moment/moment"
+import moment from "moment"
 import {serverData} from "../Domain/serverData.js"
 import {socketListeners} from "../Domain/socketListeners.js"
 import {redisData} from "../Domain/redisData.js"
@@ -13,7 +13,7 @@ export const wsServerStat = () => {
         channelsCount++
         listenersCount += socketListeners[channel].size
     }
-    return {
+    return JSON.stringify({
         status: (redisData.status === `connected`) ? `ok` : `error`,
         channels: channelsCount,
         listeners: {
@@ -30,5 +30,5 @@ export const wsServerStat = () => {
             start: redisData.start,
             duration: moment(redisData.start).locale("ru").fromNow()
         }
-    }
+    })
 }

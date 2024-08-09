@@ -26,9 +26,8 @@ redisClient.on(`reconnecting`, redisReconnectingHandler)
 redisClient.on(`error`, redisErrorHandler)
 redisClient.subscribe(redisChannel, redisMessageHandler)
 
-const heartbeat = () => {
-    this.isAlive = true
-}
+// https://nginx.org/en/docs/http/websocket.html - last paragraph
+// https://habr.com/ru/articles/762808/
 const interval = setInterval(() => {
     wsServer.clients.forEach(function each(ws) {
         if (ws.isAlive === false) {
@@ -45,10 +44,13 @@ wsServer.on('connection', function connection(ws, req) {
 
     const url = new URL(`${baseUrl}${req.url}`)
     const channelName = url.searchParams['channel'] || ''
-    console.log('New connection', req.url, url.searchParams)
+    console.log('New client', req.url, url.searchParams)
     addSocketConnection(channelName, ws)
 
-    ws.on('pong', heartbeat)
+    ws.on('pong', () => {
+        console.log(`Pong received`)
+        ws.isAlive = true
+    })
     ws.on('message', function message(data, isBinary) {
         console.log('received: %s', data)
         wsServer.clients.forEach(function each(client) {
@@ -59,7 +61,7 @@ wsServer.on('connection', function connection(ws, req) {
     });
     ws.on('close', function (code, reason) {
         // отправка уведомления в консоль
-        console.log(`Пользователь отключился, ${code} - ${reason}`)
+        console.log(`Client disconnected, ${code}`)
         deleteSocketConnection(channelName, ws)
     })
     ws.on('error', console.error)

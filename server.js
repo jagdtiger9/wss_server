@@ -7,6 +7,7 @@ import {wsServerStat} from "./application/wsServerStatQuery.js"
 import {updateServerData} from "./application/updateServerDataCommand.js"
 import {redisConnectHandler, redisErrorHandler, redisMessageHandler, redisReconnectingHandler} from "./application/redisHandler.js"
 import {addSocketConnection, deleteSocketConnection} from "./application/socketConnectionHandler.js"
+import axios from "axios"
 
 const expressPort = process.env.WS_HTTP_PORT
 const redisHost = process.env.REDIS_HOST
@@ -15,6 +16,7 @@ const redisChannel = process.env.REDIS_CHANNEL
 const websocketPort = process.env.WS_PORT
 const updateTimeout = 30000
 const baseUrl = 'http://nodejs'
+const webHookDomain = process.env.WEB_HOOK
 
 // Redis PUB/SUB messages
 const redisClient = createClient({
@@ -28,6 +30,8 @@ redisClient.subscribe(redisChannel, redisMessageHandler)
 
 // https://nginx.org/en/docs/http/websocket.html - last paragraph
 // https://habr.com/ru/articles/762808/
+// https://stackoverflow.com/questions/50876766/how-to-implement-ping-pong-request-for-websocket-connection-alive-in-javascript
+// https://udf.su/ws-1006-error-handling
 const interval = setInterval(() => {
     wsServer.clients.forEach(function each(ws) {
         if (ws.isAlive === false) {
@@ -46,6 +50,13 @@ wsServer.on('connection', function connection(ws, req) {
     const channelName = url.searchParams['channel'] || ''
     console.log('New client', req.url, url.searchParams)
     addSocketConnection(channelName, ws)
+    axios.create({
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Content-Type': 'application/json',
+        },
+        responseType: 'json',
+    }).post(webHookDomain, Object.assign({event: 'connect'}))
 
     ws.on('pong', () => {
         console.log(`Pong received`)
@@ -63,6 +74,14 @@ wsServer.on('connection', function connection(ws, req) {
         // отправка уведомления в консоль
         console.log(`Client disconnected, ${code}`)
         deleteSocketConnection(channelName, ws)
+
+        axios.create({
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Content-Type': 'application/json',
+            },
+            responseType: 'json',
+        }).post(webHookDomain, Object.assign({event: 'disconnect'}))
     })
     ws.on('error', console.error)
 })

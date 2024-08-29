@@ -15,7 +15,6 @@ const redisPort = process.env.REDIS_PORT
 const redisChannel = process.env.REDIS_CHANNEL
 const websocketPort = process.env.WS_PORT
 const updateTimeout = 30000
-const baseUrl = 'http://nodejs'
 const webHookDomain = process.env.WEB_HOOK
 
 // Redis PUB/SUB messages
@@ -46,9 +45,13 @@ const wsServer = new WebSocketServer({port: websocketPort})
 wsServer.on('connection', function connection(ws, req) {
     ws.isAlive = true
 
-    const url = new URL(`${baseUrl}${req.url}`)
-    const channelName = url.searchParams['channel'] || ''
-    console.log('New client', req.url, url.searchParams)
+    const urlSearchParams = new URLSearchParams(req.url.charAt(0) === '/' ? req.url.slice(1) : req.url)
+    const channelName = urlSearchParams['channel'] || ''
+    const clientParams = Object.assign(
+        {event: 'connect'},
+        Object.fromEntries(urlSearchParams)
+    )
+    console.log('New-client', req.url, webHookDomain, clientParams)
     addSocketConnection(channelName, ws)
     axios.create({
         headers: {
@@ -56,7 +59,7 @@ wsServer.on('connection', function connection(ws, req) {
             'Content-Type': 'application/json',
         },
         responseType: 'json',
-    }).post(webHookDomain, Object.assign({event: 'connect'}))
+    }).post(webHookDomain, clientParams).then(() => { console.log('API ok') }).catch((e) => {console.log(`API err: ${e}`)})
 
     ws.on('pong', () => {
         console.log(`Pong received`)
@@ -81,7 +84,12 @@ wsServer.on('connection', function connection(ws, req) {
                 'Content-Type': 'application/json',
             },
             responseType: 'json',
-        }).post(webHookDomain, Object.assign({event: 'disconnect'}))
+        }).post(webHookDomain, Object.assign(
+            {event: 'disconnect'},
+            Object.fromEntries(urlSearchParams)
+        )).then(() => {
+            console.log('API ok')
+        }).catch((e) => {console.log(`API err: ${e}`)})
     })
     ws.on('error', console.error)
 })

@@ -7,7 +7,6 @@ import {wsServerStat} from "./application/wsServerStatQuery.js"
 import {updateServerData} from "./application/updateServerDataCommand.js"
 import {redisConnectHandler, redisErrorHandler, redisMessageHandler, redisReconnectingHandler} from "./application/redisHandler.js"
 import {addSocketConnection, deleteSocketConnection} from "./application/socketConnectionHandler.js"
-import axios from "axios"
 
 const expressPort = process.env.WS_HTTP_PORT
 const redisHost = process.env.REDIS_HOST
@@ -15,17 +14,21 @@ const redisPort = process.env.REDIS_PORT
 const redisChannel = process.env.REDIS_CHANNEL
 const websocketPort = process.env.WS_PORT
 const updateTimeout = 30000
-const webHookDomain = process.env.WEB_HOOK
 
 // Redis PUB/SUB messages
-const redisClient = createClient({
+const redisSubClient = createClient({
     url: `redis://${redisHost}:${redisPort}`
 })
-redisClient.connect().then(() => {})
-redisClient.on(`connect`, redisConnectHandler)
-redisClient.on(`reconnecting`, redisReconnectingHandler)
-redisClient.on(`error`, redisErrorHandler)
-redisClient.subscribe(redisChannel, redisMessageHandler)
+
+//const redisPubClient = redisSubClient.duplicate()
+//redisPubClient.connect().then(() => {})
+
+redisSubClient.connect().then(() => {})
+redisSubClient.on(`connect`, redisConnectHandler)
+redisSubClient.on(`reconnecting`, redisReconnectingHandler)
+redisSubClient.on(`error`, redisErrorHandler)
+redisSubClient.subscribe(redisChannel, redisMessageHandler)
+
 
 // https://nginx.org/en/docs/http/websocket.html - last paragraph
 // https://habr.com/ru/articles/762808/
@@ -47,19 +50,19 @@ wsServer.on('connection', function connection(ws, req) {
 
     const urlSearchParams = new URLSearchParams(req.url.charAt(0) === '/' ? req.url.slice(1) : req.url)
     const channelName = urlSearchParams['channel'] || ''
+    addSocketConnection(channelName, ws)
     const clientParams = Object.assign(
-        {event: 'connect'},
+        {event: 'connected'},
         Object.fromEntries(urlSearchParams)
     )
-    console.log('New-client', req.url, webHookDomain, clientParams)
-    addSocketConnection(channelName, ws)
-    axios.create({
-        headers: {
-            'X-Requested-With': 'XMLHttpRequest',
-            'Content-Type': 'application/json',
-        },
-        responseType: 'json',
-    }).post(webHookDomain, clientParams).then(() => { console.log('API ok') }).catch((e) => {console.log(`API err: ${e}`)})
+    ws.send(JSON.stringify(clientParams))
+    console.log('New-client', req.url, clientParams, JSON.stringify(clientParams))
+
+    // redisPubClient.publish(redisChannel, JSON.stringify(clientParams)).then(() => {
+    //     console.log('new client publish - ok')
+    // }).catch((e) => {
+    //     console.log(`new client publish - err, ${e}`)
+    // })
 
     ws.on('pong', () => {
         console.log(`Pong received`)
@@ -69,27 +72,19 @@ wsServer.on('connection', function connection(ws, req) {
         console.log('received: %s', data)
         wsServer.clients.forEach(function each(client) {
             if (client !== ws && client.readyState === WebSocket.OPEN) {
-                client.send(data, {binary: isBinary});
+                client.send(data, {binary: isBinary})
             }
-        });
-    });
+        })
+    })
     ws.on('close', function (code, reason) {
         // отправка уведомления в консоль
         console.log(`Client disconnected, ${code}`)
         deleteSocketConnection(channelName, ws)
-
-        axios.create({
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest',
-                'Content-Type': 'application/json',
-            },
-            responseType: 'json',
-        }).post(webHookDomain, Object.assign(
-            {event: 'disconnect'},
+        const clientParams = Object.assign(
+            {event: 'disconnected'},
             Object.fromEntries(urlSearchParams)
-        )).then(() => {
-            console.log('API ok')
-        }).catch((e) => {console.log(`API err: ${e}`)})
+        )
+        ws.send(JSON.stringify(clientParams))
     })
     ws.on('error', console.error)
 })

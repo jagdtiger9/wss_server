@@ -55,7 +55,7 @@ wsServer.on('connection', function connection(ws, req) {
         {event: 'connected'},
         Object.fromEntries(urlSearchParams)
     )
-    ws.send(JSON.stringify(clientParams))
+    ///ws.send(JSON.stringify(clientParams))
     console.log('New-client', req.url, clientParams, JSON.stringify(clientParams))
 
     // redisPubClient.publish(redisChannel, JSON.stringify(clientParams)).then(() => {
@@ -80,11 +80,11 @@ wsServer.on('connection', function connection(ws, req) {
         // отправка уведомления в консоль
         console.log(`Client disconnected, ${code}`)
         deleteSocketConnection(channelName, ws)
-        const clientParams = Object.assign(
-            {event: 'disconnected'},
-            Object.fromEntries(urlSearchParams)
-        )
-        ws.send(JSON.stringify(clientParams))
+        // const clientParams = Object.assign(
+        //     {event: 'disconnected'},
+        //     Object.fromEntries(urlSearchParams)
+        // )
+        ///ws.send(JSON.stringify(clientParams))
     })
     ws.on('error', console.error)
 })
